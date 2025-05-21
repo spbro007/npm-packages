@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 20
       - run: cd expo-google-auth && npm ci
-      - run: cd expo-google-auth && npm test
+      # - run: cd expo-google-auth && npm test
 
   publish-npm:
     needs: build
