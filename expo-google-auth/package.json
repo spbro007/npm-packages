@@ -21,7 +21,7 @@
     "expo-google-auth",
     "ExpoGoogleAuth"
   ],
-  "repository": "https://github.com/spbro007/npm-packages/expo-google-auth",
+  "repository": {"type": "git", "url": "git+https://github.com/spbro007/npm-packages.git", "directory": "expo-google-auth"},
   "bugs": {
     "url": "https://github.com/spbro007/npm-packages/issues"
   },
