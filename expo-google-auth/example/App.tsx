@@ -1,5 +1,6 @@
 import { useEvent } from "expo";
 import ExpoGoogleAuth from "expo-google-auth";
+import { YoutubeScope } from "expo-google-auth/ExpoGoogleAuthModule";
 import {
   Button,
   Pressable,
@@ -17,7 +18,18 @@ export default function App() {
         { justifyContent: "center", alignItems: "center" },
       ]}
     >
-      <Pressable onPress={() => ExpoGoogleAuth.launchGoogleAuth("SIWG", process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).catch(e => console.error(e))}>
+      <Pressable
+        onPress={() => {
+          console.log("Starting...");
+          ExpoGoogleAuth.authorizeYoutube(
+            [YoutubeScope.READ_ONLY],
+            process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+          )
+            .then((res) => console.log(res))
+            .catch((e) => console.error(e))
+            .finally(() => console.log("done"));
+        }}
+      >
         <Text>Sign in with Google</Text>
       </Pressable>
     </View>
