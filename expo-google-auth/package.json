@@ -1,6 +1,6 @@
 {
   "name": "expo-google-auth",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Google Auth",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -27,7 +27,7 @@
   },
   "author": "Sp",
   "license": "MIT",
-  "homepage": "https://github.com/spbro007/npm-packages/tree/main/expo-google-auth",
+  "homepage": "https://github.com/spbro007/npm-packages",
   "dependencies": {},
   "devDependencies": {
     "@types/react": "~19.0.0",

@@ -1,13 +1,25 @@
 package expo.modules.googleauth
 
 import android.app.Activity
+import android.content.Intent
+import android.content.IntentSender
 import android.util.Log
+import androidx.activity.result.ActivityResultCaller
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.auth.api.identity.AuthorizationClient
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -18,18 +30,13 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
-import androidx.appcompat.app.AppCompatActivity
-import androidx.credentials.ClearCredentialStateRequest
 
 class ExpoGoogleAuthModule : Module() {
 
-    private enum class GoogleSignInMode {
-        SWIG, // Sign-in With Google
-        GID   // Google ID
-    }
-
     override fun definition() = ModuleDefinition {
         Name("ExpoGoogleAuth")
+
+        // --- Google Authentication ---
 
         AsyncFunction("launchGoogleAuth") { modeString: String, webClientId: String, promise: Promise ->
             val currentActivity = appContext.currentActivity
@@ -91,11 +98,11 @@ class ExpoGoogleAuthModule : Module() {
                 )
                 return@AsyncFunction
             }
+
             val credentialManager = CredentialManager.create(currentActivity)
             (currentActivity as? AppCompatActivity)?.lifecycleScope?.launch {
                 try {
                     credentialManager.clearCredentialState(ClearCredentialStateRequest())
-                    Log.i("ExpoGoogleAuthModule", "Successfully signed out")
                     promise.resolve(null)
                 } catch (e: Exception) {
                     Log.e("ExpoGoogleAuthModule", "Signing out failed", e)
@@ -109,8 +116,134 @@ class ExpoGoogleAuthModule : Module() {
                 )
             }
         }
+
+        // --- Youtube Authorization ---
+
+        AsyncFunction("authorizeYoutube") { scopes: List<String>, webClientId: String, promise: Promise ->
+            val currentActivity = appContext.currentActivity
+            if (currentActivity == null) {
+                promise.reject(
+                    "E_ACTIVITY_UNAVAILABLE",
+                    "Activity is not available. Ensure a foreground activity exists.",
+                    null
+                )
+                return@AsyncFunction
+            }   
+
+            val scopes = parseToYoutubeScopes(scopes)
+            if (scopes.isEmpty()) {
+                promise.reject(
+                    "E_INVALID_SCOPES",
+                    "No valid scopes provided. Please provide at least one scope.",
+                    null
+                )
+                return@AsyncFunction
+            }
+
+            val request = buildAuthorizationRequest(scopes, webClientId)
+            
+            val client = Identity.getAuthorizationClient(currentActivity)
+            
+            // Launch the authorization flow in the activity's lifecycle scope
+            (currentActivity as? AppCompatActivity)?.lifecycleScope?.launch {
+                try {
+                    client.authorize(request)
+                        .addOnSuccessListener { authResult ->
+                            if (authResult.hasResolution()) {
+                                // Needs user interaction – launch the pending intent using the Activity Result API
+                                val caller = currentActivity as? ActivityResultCaller
+                                if (caller == null) {
+                                    promise.reject(
+                                        "E_ACTIVITY_NOT_COMPATIBLE",
+                                        "Current activity cannot launch ActivityResultCaller flows.",
+                                        null
+                                    )
+                                    return@addOnSuccessListener
+                                }
+
+                                val launcher = caller.registerForActivityResult(
+                                    ActivityResultContracts.StartIntentSenderForResult()
+                                ) { result ->
+                                    if (result.resultCode == Activity.RESULT_OK) {
+                                        val data = result.data
+                                        val finalResult = Identity.getAuthorizationClient(currentActivity)
+                                            .getAuthorizationResultFromIntent(data)
+                                        val serverCode = finalResult?.serverAuthCode
+                                        if (serverCode != null) {
+                                            promise.resolve(serverCode)
+                                        } else {
+                                            promise.reject(
+                                                "E_NO_AUTH_CODE",
+                                                "Authorization completed but no server auth code returned.",
+                                                null
+                                            )
+                                        }
+                                    } else {
+                                        promise.reject(
+                                            "E_AUTH_CANCELLED",
+                                            "Authorization flow was cancelled by the user.",
+                                            null
+                                        )
+                                    }
+                                }
+
+                                try {
+                                    val pendingIntent = authResult.pendingIntent
+                                    val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                    launcher.launch(intentSenderRequest)
+                                } catch (e: IntentSender.SendIntentException) {
+                                    promise.reject(
+                                        "E_INTENT_SENDER",
+                                        "Couldn't start Authorization UI: ${e.localizedMessage}",
+                                        e
+                                    )
+                                }
+                            } else {
+                                // Authorization successful without extra UI – return code directly
+                                val serverCode = authResult.serverAuthCode
+                                if (serverCode != null) {
+                                    promise.resolve(serverCode)
+                                } else {
+                                    promise.reject(
+                                        "E_NO_AUTH_CODE",
+                                        "Authorization succeeded but server auth code is null.",
+                                        null
+                                    )
+                                }
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            promise.reject(
+                                "E_AUTH_FAILED",
+                                "Google authorization failed: ${e.message}",
+                                e
+                            )
+                        }
+                } catch (e: Exception) {
+                    promise.reject(
+                        "E_AUTH_FAILED",
+                        "Google authorization failed: ${e.message}",
+                        e
+                    )
+                }
+            } ?: run {
+                promise.reject(
+                    "E_ACTIVITY_NOT_COMPATIBLE",
+                    "Current activity is not an AppCompatActivity or does not support lifecycleScope.",
+                    null
+                )
+            }
+        }
+
     }
 
+    // --- Google Authentication ---
+
+    private enum class GoogleSignInMode {
+        SWIG, // Sign-in With Google
+        GID   // Google ID
+    }
+    
     private fun buildGetCredentialRequest(mode: GoogleSignInMode, serverClientId: String): GetCredentialRequest {
         val nonce = generateNonce()
         return when (mode) {
@@ -140,7 +273,6 @@ class ExpoGoogleAuthModule : Module() {
                     try {
                         val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                         val idToken = googleIdTokenCredential.idToken
-                        Log.i("ExpoGoogleAuthModule", "idToken received successfully.")
                         promise.resolve(idToken)
                     } catch (e: GoogleIdTokenParsingException) {
                         Log.e("ExpoGoogleAuthModule", "Received an invalid google id token response", e)
@@ -176,4 +308,36 @@ class ExpoGoogleAuthModule : Module() {
         sr.nextBytes(bytes)
         return bytes.joinToString("") { "%02x".format(it) }
     }
+
+    // --- Youtube Authorization ---
+
+    private enum class YoutubeScope {
+        READ_ONLY,
+        UPLOAD,
+        MANAGE_ACCOUNT
+    }
+
+    private val youTubeScopes = mapOf(
+        YoutubeScope.READ_ONLY to Scope("https://www.googleapis.com/auth/youtube.readonly"),
+        YoutubeScope.UPLOAD to Scope("https://www.googleapis.com/auth/youtube.upload"),
+        YoutubeScope.MANAGE_ACCOUNT to Scope("https://www.googleapis.com/auth/youtube"),
+    )
+
+    private fun parseToYoutubeScopes(scopes: List<Any>): List<Scope> {
+        return scopes.mapNotNull { operation ->
+            when (operation) {
+                is YoutubeScope -> youTubeScopes[operation]
+                is String -> YoutubeScope.entries.find { it.name == operation }?.let { youTubeScopes[it] }
+                else -> null
+            }
+        }
+    }
+
+    private fun buildAuthorizationRequest(
+        scopes: List<Scope>, serverClientId: String
+    ): AuthorizationRequest {
+        return AuthorizationRequest.builder().setRequestedScopes(scopes)
+            .requestOfflineAccess(serverClientId).build()
+    }
+    
 }
