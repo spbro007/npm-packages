@@ -311,13 +311,25 @@ class ExpoGoogleAuthModule : Module() {
     private enum class YoutubeScope {
         READ_ONLY,
         UPLOAD,
-        MANAGE_ACCOUNT
+        MANAGE_ACCOUNT,
+        DOWNLOAD,
+        FORCE_SSL,
+        PARTNER,
+        PARTNER_CHANNEL_AUDIT,
+        CHANNEL_MEMBERSHIPS_CREATOR,
+        THIRD_PARTY_LINK_CREATOR
     }
 
     private val youTubeScopes = mapOf(
         YoutubeScope.READ_ONLY to Scope("https://www.googleapis.com/auth/youtube.readonly"),
         YoutubeScope.UPLOAD to Scope("https://www.googleapis.com/auth/youtube.upload"),
         YoutubeScope.MANAGE_ACCOUNT to Scope("https://www.googleapis.com/auth/youtube"),
+        YoutubeScope.DOWNLOAD to Scope("https://www.googleapis.com/auth/youtube.download"),
+        YoutubeScope.FORCE_SSL to Scope("https://www.googleapis.com/auth/youtube.force-ssl"),
+        YoutubeScope.PARTNER to Scope("https://www.googleapis.com/auth/youtubepartner"),
+        YoutubeScope.PARTNER_CHANNEL_AUDIT to Scope("https://www.googleapis.com/auth/youtubepartner-channel-audit"),
+        YoutubeScope.CHANNEL_MEMBERSHIPS_CREATOR to Scope("https://www.googleapis.com/auth/youtube.channel-memberships.creator"),
+        YoutubeScope.THIRD_PARTY_LINK_CREATOR to Scope("https://www.googleapis.com/auth/youtube.third-party-link.creator")
     )
 
     private fun parseToYoutubeScopes(scopes: List<Any>): List<Scope> {
