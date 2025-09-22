@@ -351,7 +351,7 @@ class ExpoGoogleAuthModule : Module() {
         
         val request = AuthorizationRequest.builder()
             .setRequestedScopes(scopes)
-            .requestOfflineAccess(serverClientId)
+            .requestOfflineAccess(serverClientId, true)
             .build()
             
         Log.d("ExpoGoogleAuthModule", "Authorization request built: $request")
